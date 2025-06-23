@@ -15,20 +15,24 @@ REFLECTOR = YRUHQSLDPXNGOKMIEBFZCWVJAT
 # Define dependencies
 COMMON_HEADER = enigma_common.h
 
-.PHONY: build install uninstall setup-network clean-network reset-rotors setup-maps setup-rotors setup-reflector clean-maps set-rotor-position
+.PHONY: build install uninstall setup-network clean-network reset-rotors setup-maps setup-rotors setup-reflector pin-bombe-maps clean-maps set-rotor-position
 
 # Build BPF objects with explicit dependencies on common header
 enigma.o: enigma.c $(COMMON_HEADER)
 	$(CLANG) -c enigma.c -o enigma.o
 
+bombe.o: bombe.c $(COMMON_HEADER)
+	$(CLANG) -c bombe.c -o bombe.o
+
 # Build BPF objects
-build: enigma.o
+build: enigma.o bombe.o
 
 # Install BPF programs
 install: uninstall build
 	sudo tc qdisc add dev $(VETH0) clsact
 	sudo tc filter add dev $(VETH0) egress bpf da obj enigma.o sec classifier
 	sudo ip netns exec $(NETNS) tc qdisc add dev $(VETH1) clsact
+	sudo ip netns exec $(NETNS) tc filter add dev $(VETH1) ingress bpf da obj bombe.o sec classifier
 
 # Remove installed BPF programs
 uninstall:
@@ -72,18 +76,22 @@ setup-rotors:
 update-rotor1:
 	@echo "Updating rotor1 maps"
 	@./scripts/update_rotor.sh rotor1_map rotor1_inv_map "$(ROTOR1)" 1
+	@./scripts/update_rotor.sh rotor1_bombe_map rotor1_inv_bombe_map "$(ROTOR1)" 1
 
 update-rotor2:
 	@echo "Updating rotor2 maps"
 	@./scripts/update_rotor.sh rotor2_map rotor2_inv_map "$(ROTOR2)" 1
+	@./scripts/update_rotor.sh rotor2_bombe_map rotor2_inv_bombe_map "$(ROTOR2)" 1
 
 update-rotor3:
 	@echo "Updating rotor3 maps"
 	@./scripts/update_rotor.sh rotor3_map rotor3_inv_map "$(ROTOR3)" 1
+	@./scripts/update_rotor.sh rotor3_bombe_map rotor3_inv_bombe_map "$(ROTOR3)" 1
 
 setup-reflector:
 	@echo "Setting up reflector"
 	@./scripts/update_reflector.sh reflector_map "$(REFLECTOR)"
+	@./scripts/update_reflector.sh reflector_bombe_map "$(REFLECTOR)"
 
 # Set up rotor positions
 set-rotor-position:
@@ -99,6 +107,13 @@ set-rotor-position:
 	echo "Truncated input (removing first $(POS) chars): \"$$TRUNCATED_INPUT\""; \
 	echo -n "$$TRUNCATED_INPUT" | nc -u -w1 -p 12345 10.0.0.2 1912
 
+pin-bombe-maps:
+	@echo "Pinning BPF maps..."
+	@for map in rotor1_bombe_map rotor1_inv_bombe_map rotor2_bombe_map rotor2_inv_bombe_map rotor3_bombe_map rotor3_inv_bombe_map reflector_bombe_map; do \
+		echo "Pinning map $$map..."; \
+		sudo bpftool map pin name $${map:0:15} $(TC_PATH)/$$map 2>/dev/null || echo "Map $${map:0:15} not found"; \
+	done
+
 clean-maps:
 	@echo "Cleaning up BPF maps under $(TC_PATH)"
 	@for i in $$(sudo find $(TC_PATH) -type f -name "*_map" 2>/dev/null); do \
@@ -109,12 +124,13 @@ clean-maps:
 
 # Help target
 help:
-	@echo "Enigma BPF Makefile"
+	@echo "Enigma/Bombe BPF Makefile"
 	@echo ""
 	@echo "Required Targets:"
 	@echo "  setup-network      - Set up virtual network interfaces and namespace"
-	@echo "  build              - Compile enigma.c to BPF objects"
+	@echo "  build              - Compile enigma.c and bombe.c to BPF objects"
 	@echo "  install            - Install BPF programs after building"
+	@echo "  pin-bombe-maps     - Pin BPF maps for bombe"
 	@echo "  setup-maps         - Set up enigma rotor and reflector maps"
 	@echo "  reset-rotors       - Reset rotor positions to initial state"
 	@echo "  set-rotor-position - Set rotor positions (Usage: make set-rotor-position POS=29 R0=0 R1=1 R2=3)"
