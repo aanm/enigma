@@ -1,3 +1,6 @@
+# This Makefile uses bash substitution
+SHELL := /bin/bash
+
 # Variables for common commands and paths
 CLANG = clang -O2 -g -target bpf -D__BPF_TRACING__ -Wall
 TC_PATH = /sys/fs/bpf/tc/globals
@@ -114,6 +117,14 @@ pin-bombe-maps:
 		sudo bpftool map pin name $${map:0:15} $(TC_PATH)/$$map 2>/dev/null || echo "Map $${map:0:15} not found"; \
 	done
 
+start-receiver:
+       @echo "Starting receiver in network namespace $(NETNS)"
+       @sudo ip netns exec $(NETNS) nc -u -l -p 1912
+
+send:
+       @echo "Sending message $${MSG^^} to receiver"
+       @echo "$${MSG^^}" | sudo nc -u -w1 -p 12345 10.0.0.2 1912
+
 clean-maps:
 	@echo "Cleaning up BPF maps under $(TC_PATH)"
 	@for i in $$(sudo find $(TC_PATH) -type f -name "*_map" 2>/dev/null); do \
@@ -134,6 +145,8 @@ help:
 	@echo "  setup-maps         - Set up enigma rotor and reflector maps"
 	@echo "  reset-rotors       - Reset rotor positions to initial state"
 	@echo "  set-rotor-position - Set rotor positions (Usage: make set-rotor-position POS=29 R0=0 R1=1 R2=3)"
+	@echo "  start-receiver     - Start the receiver in the network namespace"
+	@echo "  send               - Send a message to the receiver (Usage: make send MSG=\"Hello World\")"
 	@echo "  clean-network      - Clean up network namespace and interfaces"
 	@echo "  uninstall          - Remove installed BPF programs"
 	@echo "  clean-maps         - Clean up all BPF maps"
