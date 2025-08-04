@@ -124,6 +124,12 @@ Before sending any messages, you need to set up a listener in the testns namespa
 to receive the UDP traffic:
 
 ```bash
+make start-receiver 
+```
+
+Or manually:
+
+```bash
 sudo ip netns exec testns nc -u -l -p 1912
 ```
 
@@ -133,6 +139,12 @@ Keep this terminal open while sending messages in another terminal.
 
 To encrypt a message, send it via UDP to the virtual interface from your host
 machine:
+
+```bash
+make send MSG="Hello World!"
+```
+
+Or manually:
 
 ```bash
 echo -n "HELLO WORLD!" | nc -u -w1 -p 12345 10.0.0.2 1912
